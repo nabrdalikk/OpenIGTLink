@@ -178,6 +178,10 @@ int main(int argc, char* argv[])
   //------------------------------------------------------------
   // Close connection (The example code never reaches to this section ...)
   
+  igtl::PointMessage::Pointer pointMsg;
+  pointMsg = igtl::PointMessage::New();
+  pointMsg->SetDeviceName("PointSender");
+  
   socket->CloseSocket();
 
 }
@@ -338,53 +342,6 @@ int ReceiveStatus(igtl::Socket * socket, igtl::MessageHeader * header)
 
 
 #if OpenIGTLink_PROTOCOL_VERSION >= 2
-int ReceivePoint(igtl::Socket * socket, igtl::MessageHeader * header)
-{
-
-  std::cerr << "Receiving POINT data type." << std::endl;
-
-  // Create a message buffer to receive transform data
-  igtl::PointMessage::Pointer pointMsg;
-  pointMsg = igtl::PointMessage::New();
-  pointMsg->SetMessageHeader(header);
-  pointMsg->AllocatePack();
-
-  // Receive transform data from the socket
-  socket->Receive(pointMsg->GetPackBodyPointer(), pointMsg->GetPackBodySize());
-
-  // Deserialize the transform data
-  // If you want to skip CRC check, call Unpack() without argument.
-  int c = pointMsg->Unpack(1);
-
-  if (c & igtl::MessageHeader::UNPACK_BODY) // if CRC check is OK
-    {
-    int nElements = pointMsg->GetNumberOfPointElement();
-    for (int i = 0; i < nElements; i ++)
-      {
-      igtl::PointElement::Pointer pointElement;
-      pointMsg->GetPointElement(i, pointElement);
-
-      igtlUint8 rgba[4];
-      pointElement->GetRGBA(rgba);
-
-      igtlFloat32 pos[3];
-      pointElement->GetPosition(pos);
-
-      std::cerr << "========== Element #" << i << " ==========" << std::endl;
-      std::cerr << " Name      : " << pointElement->GetName() << std::endl;
-      std::cerr << " GroupName : " << pointElement->GetGroupName() << std::endl;
-      std::cerr << " RGBA      : ( " << (int)rgba[0] << ", " << (int)rgba[1] << ", " << (int)rgba[2] << ", " << (int)rgba[3] << " )" << std::endl;
-      std::cerr << " Position  : ( " << std::fixed << pos[0] << ", " << pos[1] << ", " << pos[2] << " )" << std::endl;
-      std::cerr << " Radius    : " << std::fixed << pointElement->GetRadius() << std::endl;
-      std::cerr << " Owner     : " << pointElement->GetOwner() << std::endl;
-      std::cerr << "================================" << std::endl;
-      }
-    }
-
-  return 1;
-}
-
-
 int ReceivePointandSendBack(igtl::Socket * socket, igtl::MessageHeader * header)
 {
 
@@ -416,6 +373,27 @@ int ReceivePointandSendBack(igtl::Socket * socket, igtl::MessageHeader * header)
 
 			igtlFloat32 pos[3];
 			pointElement->GetPosition(pos);
+			
+			igtl::PointMessage::Pointer pointMsgRcv;
+			pointMsgRcv = igtl::PointMessage::New();
+			pointMsgRcv->SetDeviceName("PointReceiver");
+
+			igtl::PointElement::Pointer pointToSend;
+			pointToSend = igtl::PointElement::New();
+			
+			pointToSend->SetName(pointElement->GetName());
+			pointToSend->SetGroupName(pointElement->GetGroupName());
+			pointToSend->SetRGBA((int)rgba[0], (int)rgba[1], (int)rgba[2], (int)rgba[3]);
+			pointToSend->SetPosition(-pos[0], -pos[1], -pos[2]);
+			pointToSend->SetRadius(pointElement->GetRadius());
+			pointToSend->SetOwner(pointElement->GetOwner());
+
+			pointMsgRcv->AddPointElement(pointToSend);
+			pointMsgRcv->Pack();
+
+			igtl::Sleep(1000);
+			
+			socket->Send(pointMsgRcv->GetPackPointer(), pointMsgRcv->GetPackSize());
 
 			std::cerr << "========== Element #" << i << " ==========" << std::endl;
 			std::cerr << " Name      : " << pointElement->GetName() << std::endl;
@@ -427,70 +405,9 @@ int ReceivePointandSendBack(igtl::Socket * socket, igtl::MessageHeader * header)
 			std::cerr << "================================" << std::endl;
 		}
 	}
-
-	igtl::PointMessage::Pointer pointMsgnr1;
-	pointMsgnr1 = igtl::PointMessage::New();
-	pointMsgnr1->SetDeviceName("PointSender");
-
-	igtl::PointMessage::Pointer pointMsgnr2;
-	pointMsgnr2 = igtl::PointMessage::New();
-	pointMsgnr2->SetDeviceName("PointSender");
-
-	igtl::PointMessage::Pointer pointMsgnr3;
-	pointMsgnr3 = igtl::PointMessage::New();
-	pointMsgnr3->SetDeviceName("PointSender");
-
-	// Create 1st point
-	igtl::PointElement::Pointer point0;
-	point0 = igtl::PointElement::New();
-	point0->SetName("POINT_0");
-	point0->SetGroupName("GROUP_0");
-	point0->SetRGBA(0xFF, 0x00, 0x00, 0xFF);
-	point0->SetPosition(-10.0, -20.0, -30.0);
-	point0->SetRadius(15.0);
-	point0->SetOwner("IMAGE_0");
-
-	//---------------------------
-	// Create 2nd point
-	igtl::PointElement::Pointer point1;
-	point1 = igtl::PointElement::New();
-	point1->SetName("POINT_1");
-	point1->SetGroupName("GROUP_0");
-	point1->SetRGBA(0x00, 0xFF, 0x00, 0xFF);
-	point1->SetPosition(-40.0, -50.0, -60.0);
-	point1->SetRadius(45.0);
-	point1->SetOwner("IMAGE_0");
-
-	//---------------------------
-	// Create 3rd point
-	igtl::PointElement::Pointer point2;
-	point2 = igtl::PointElement::New();
-	point2->SetName("POINT_2");
-	point2->SetGroupName("GROUP_0");
-	point2->SetRGBA(0x00, 0x00, 0xFF, 0xFF);
-	point2->SetPosition(-70.0, -80.0, -90.0);
-	point2->SetRadius(75.0);
-	point2->SetOwner("IMAGE_0");
-
-	// Pack into the point message
-	pointMsgnr1->AddPointElement(point0);	
-	pointMsgnr2->AddPointElement(point1);
-	pointMsgnr3->AddPointElement(point2);
-	pointMsg->Pack();
-
-	//------------------------------------------------------------
-	// Send
-	igtl::Sleep(3000);
-	socket->Send(pointMsgnr1->GetPackPointer(), pointMsgnr1->GetPackSize());
-	std::cerr << "wyslano 1" << std::endl;
-	igtl::Sleep(3000);
-	socket->Send(pointMsgnr2->GetPackPointer(), pointMsgnr2->GetPackSize());
-	std::cerr << "wyslano 2" << std::endl;
-	igtl::Sleep(3000);
-	socket->Send(pointMsgnr3->GetPackPointer(), pointMsgnr3->GetPackSize());
-	std::cerr << "wyslano 3" << std::endl;
-	igtl::Sleep(3000);
+	
 	return 1;
+	
 }
 
 int ReceiveTrajectory(igtl::Socket * socket, igtl::MessageHeader::Pointer& header)
